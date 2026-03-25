@@ -11,11 +11,13 @@ export default defineConfig(({ mode }) => {
       react(), 
       tailwindcss(),
       VitePWA({
-        registerType: 'autoUpdate',
+        registerType: 'prompt',
         includeAssets: ['favicon.ico', 'apple-touch-icon.png', 'pwa-192x192.png', 'pwa-512x512.png'],
         workbox: {
-          skipWaiting: true,    // attiva il nuovo SW subito senza aspettare
-          clientsClaim: true,   // prende controllo di tutte le tab aperte
+          // skipWaiting è OMESSO intenzionalmente: con registerType 'prompt' il nuovo SW
+          // deve restare in "waiting" finché l'utente clicca "Aggiorna Ora".
+          // skipWaiting: true contrasterebbe con questo meccanismo.
+          clientsClaim: true,   // prende controllo delle tab aperte dopo l'attivazione
         },
         manifest: {
           short_name: 'Klass',

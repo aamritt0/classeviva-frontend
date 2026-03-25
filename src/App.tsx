@@ -17,6 +17,8 @@ import {
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { Grade, LoginResponse, SubjectAverage, Lesson, Absence, Period } from './types';
+import { PWAInstallPrompt } from './PWAInstallPrompt';
+import { ReloadPrompt } from './ReloadPrompt';
 
 const API_BASE = import.meta.env.VITE_API_BASE_URL || '';
 
@@ -309,6 +311,8 @@ export default function App() {
             <p className="text-[11px] font-bold text-gray-400">Questa app non è affiliata a Spaggiari</p>
           </div>
         </motion.div>
+        <PWAInstallPrompt />
+        <ReloadPrompt />
       </div>
     );
   }
@@ -617,6 +621,8 @@ export default function App() {
           <LogOut size={26} strokeWidth={2} />
         </button>
       </div>
+      <PWAInstallPrompt />
+      <ReloadPrompt />
     </div>
   );
 }
