@@ -3,8 +3,8 @@ export interface Grade {
   subjectDesc: string;
   displayValue: string;
   decimalValue: number;
-  registeredAt: string;
-  notes: string;
+  evtDate: string;
+  notesForFamily: string;
   color: string;
   componentDesc: string;
   periodPos: number;
