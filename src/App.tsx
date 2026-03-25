@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { 
   LogIn, 
   LogOut, 
@@ -19,8 +19,28 @@ import { motion, AnimatePresence } from 'motion/react';
 import { Grade, LoginResponse, SubjectAverage, Lesson, Absence, Period } from './types';
 import { PWAInstallPrompt } from './PWAInstallPrompt';
 import { ReloadPrompt } from './ReloadPrompt';
+import { usePullToRefresh } from './usePullToRefresh';
 
 const API_BASE = import.meta.env.VITE_API_BASE_URL || '';
+
+// Cache keys per localStorage
+const CACHE_KEYS = {
+  grades:  'cvv_cache_grades',
+  lessons: 'cvv_cache_lessons',
+  absences: 'cvv_cache_absences',
+  periods:  'cvv_cache_periods',
+} as const;
+
+function loadCache<T>(key: string): T | null {
+  try {
+    const raw = localStorage.getItem(key);
+    return raw ? JSON.parse(raw) as T : null;
+  } catch { return null; }
+}
+
+function saveCache(key: string, value: unknown) {
+  try { localStorage.setItem(key, JSON.stringify(value)); } catch {}
+}
 
 export default function App() {
   const [username, setUsername] = useState('');
@@ -30,11 +50,18 @@ export default function App() {
   const [error, setError] = useState<string | null>(null);
   const [rawError, setRawError] = useState<string | null>(null);
   const [user, setUser] = useState<LoginResponse | null>(null);
-  const [grades, setGrades] = useState<Grade[]>([]);
-  const [lessons, setLessons] = useState<Lesson[]>([]);
-  const [absences, setAbsences] = useState<Absence[]>([]);
-  const [periods, setPeriods] = useState<Period[]>([]);
-  const [selectedPeriod, setSelectedPeriod] = useState<number | null>(null);
+  // Inizializza con i dati in cache per mostrarli subito (stale-while-revalidate)
+  const [grades, setGrades] = useState<Grade[]>(() => loadCache<Grade[]>(CACHE_KEYS.grades) ?? []);
+  const [lessons, setLessons] = useState<Lesson[]>(() => loadCache<Lesson[]>(CACHE_KEYS.lessons) ?? []);
+  const [absences, setAbsences] = useState<Absence[]>(() => loadCache<Absence[]>(CACHE_KEYS.absences) ?? []);
+  const [periods, setPeriods] = useState<Period[]>(() => loadCache<Period[]>(CACHE_KEYS.periods) ?? []);
+  const [selectedPeriod, setSelectedPeriod] = useState<number | null>(() => {
+    const cached = loadCache<Period[]>(CACHE_KEYS.periods);
+    if (!cached || cached.length === 0) return null;
+    const now = new Date();
+    const current = cached.find((p) => now >= new Date(p.beginAt) && now <= new Date(p.endAt));
+    return current ? current.periodPos : cached[cached.length - 1].periodPos;
+  });
   const [selectedSubject, setSelectedSubject] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<'grades' | 'lessons' | 'absences'>('grades');
   const [darkMode, setDarkMode] = useState(() => {
@@ -142,12 +169,25 @@ export default function App() {
       const absencesData = await absencesRes.json();
       const periodsData = await periodsRes.json();
 
-      if (gradesRes.ok) setGrades(gradesData.grades || []);
-      if (lessonsRes.ok) setLessons(lessonsData.lessons || []);
-      if (absencesRes.ok) setAbsences(absencesData.events || absencesData.absences || []);
+      if (gradesRes.ok) {
+        const g = gradesData.grades || [];
+        setGrades(g);
+        saveCache(CACHE_KEYS.grades, g);
+      }
+      if (lessonsRes.ok) {
+        // Le lezioni cambiano ogni giorno: non ha senso cachare a lungo
+        const l = lessonsData.lessons || [];
+        setLessons(l);
+      }
+      if (absencesRes.ok) {
+        const a = absencesData.events || absencesData.absences || [];
+        setAbsences(a);
+        saveCache(CACHE_KEYS.absences, a);
+      }
       if (periodsRes.ok) {
         const fetchedPeriods = periodsData.periods || [];
         setPeriods(fetchedPeriods);
+        saveCache(CACHE_KEYS.periods, fetchedPeriods);
         const now = new Date();
         const currentPeriod = fetchedPeriods.find((p: Period) => {
           const start = new Date(p.beginAt);
@@ -168,6 +208,17 @@ export default function App() {
     }
   };
 
+  // Memoizzato per usePullToRefresh
+  const handleRefresh = useCallback(async () => {
+    if (!user) return;
+    await fetchAllData(user.ident, user.token);
+  }, [user]);
+
+  const { pullDistance, isRefreshing } = usePullToRefresh({
+    onRefresh: handleRefresh,
+    disabled: !user || loading,
+  });
+
   const handleLogout = () => {
     setUser(null);
     setGrades([]);
@@ -176,6 +227,8 @@ export default function App() {
     setPeriods([]);
     setSelectedPeriod(null);
     localStorage.removeItem('cvv_user');
+    // Pulisce anche la cache dati al logout
+    Object.values(CACHE_KEYS).forEach((k) => localStorage.removeItem(k));
     setUsername('');
     setPassword('');
   };
@@ -319,6 +372,27 @@ export default function App() {
 
   return (
     <div className="min-h-screen bg-[var(--color-bg-light)] pb-28 relative font-nunito selection:bg-blue-100">
+      {/* Pull-to-refresh indicator */}
+      <div
+        className="fixed top-0 left-0 right-0 z-50 flex justify-center pointer-events-none"
+        style={{
+          transform: `translateY(${isRefreshing ? 56 : pullDistance - 8}px)`,
+          opacity: isRefreshing ? 1 : Math.min(pullDistance / 72, 1),
+          transition: pullDistance === 0 ? 'transform 0.3s ease, opacity 0.3s ease' : 'none',
+        }}
+      >
+        <div className="w-10 h-10 bg-[var(--color-bg-card)] rounded-full card-shadow flex items-center justify-center">
+          <Loader2
+            size={18}
+            className={`text-[var(--color-primary-blue)] ${
+              isRefreshing ? 'animate-spin' : ''
+            }`}
+            style={{
+              transform: isRefreshing ? undefined : `rotate(${pullDistance * 3}deg)`,
+            }}
+          />
+        </div>
+      </div>
       {/* Header */}
       <header className="px-8 pt-16 pb-6 flex items-start justify-between">
         <div>

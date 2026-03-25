@@ -16,8 +16,19 @@ export default defineConfig(({ mode }) => {
         workbox: {
           // skipWaiting è OMESSO intenzionalmente: con registerType 'prompt' il nuovo SW
           // deve restare in "waiting" finché l'utente clicca "Aggiorna Ora".
-          // skipWaiting: true contrasterebbe con questo meccanismo.
-          clientsClaim: true,   // prende controllo delle tab aperte dopo l'attivazione
+          clientsClaim: true,
+          // NetworkFirst per i documenti HTML: fondamentale su iOS Safari dove la cache
+          // può essere troppo aggressiva e ignorare gli aggiornamenti del SW.
+          runtimeCaching: [
+            {
+              urlPattern: ({ request }: { request: Request }) => request.destination === 'document',
+              handler: 'NetworkFirst' as const,
+              options: {
+                cacheName: 'html-cache',
+                networkTimeoutSeconds: 5,
+              },
+            },
+          ],
         },
         manifest: {
           short_name: 'Klass',

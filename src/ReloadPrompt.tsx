@@ -47,7 +47,12 @@ export function ReloadPrompt() {
                È disponibile una nuova versione di Klass. Ricarica per applicare i cambiamenti.
             </p>
             <button 
-              onClick={() => updateServiceWorker(true)}
+              onClick={() => {
+                updateServiceWorker(true);
+                // Fallback per iOS: Safari a volte non gestisce correttamente
+                // il reload innescato dal SW, quindi lo forziamo manualmente.
+                setTimeout(() => window.location.reload(), 400);
+              }}
               className="py-2 px-4 bg-[var(--color-primary-blue)] text-white text-[12px] font-extrabold rounded-[0.7rem] active:scale-95 transition-transform soft-shadow"
             >
               Aggiorna Ora
